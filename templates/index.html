@@ -317,7 +317,7 @@
             <div class="drop-zone" id="dropZone">
                 <div class="drop-zone-icon">📁</div>
                 <p>Drag and drop your images here or click to select</p>
-                <p class="drop-zone-subtitle">You can select multiple files</p>
+                <p class="drop-zone-subtitle">You can select up to 30 files at once</p>
             </div>
             <form action="/convert" method="post" enctype="multipart/form-data" id="convertForm">
                 <input type="file" name="files" id="fileInput" class="file-input" accept="image/*" multiple required>
@@ -418,6 +418,13 @@
         function handleDrop(e) {
             const dt = e.dataTransfer;
             const files = dt.files;
+            
+            // Limit to 30 files
+            if (files.length > 30) {
+                alert('You can only select up to 30 files at once');
+                return;
+            }
+            
             fileInput.files = files;
             handleFileSelect();
         }
@@ -428,6 +435,13 @@
         function handleFileSelect() {
             const files = fileInput.files;
             if (files.length > 0) {
+                // Limit to 30 files
+                if (files.length > 30) {
+                    alert('You can only select up to 30 files at once');
+                    fileInput.value = '';
+                    return;
+                }
+
                 fileName.textContent = `${files.length} file${files.length > 1 ? 's' : ''} selected`;
                 fileName.classList.add('has-file');
                 

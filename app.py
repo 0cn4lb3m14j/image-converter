@@ -4,14 +4,55 @@ import io
 import os
 import zipfile
 from werkzeug.utils import secure_filename
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32MB max file size
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+MAX_FILES = 30
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def convert_single_image(file, output_format, quality, lossless):
+    try:
+        # Open and convert image
+        img = Image.open(file.stream)
+        
+        # Preserve transparency if present
+        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+            if output_format == 'WEBP':
+                # Convert to RGBA if needed
+                if img.mode != 'RGBA':
+                    img = img.convert('RGBA')
+                output = io.BytesIO()
+                img.save(output, format='WEBP', quality=quality, lossless=lossless)
+            elif output_format == 'PNG':
+                output = io.BytesIO()
+                img.save(output, format='PNG', optimize=True)
+            else:  # JPEG doesn't support transparency
+                img = img.convert('RGB')
+                output = io.BytesIO()
+                img.save(output, format=output_format, quality=quality)
+        else:
+            # No transparency, convert to RGB if needed
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            output = io.BytesIO()
+            img.save(output, format=output_format, quality=quality)
+        
+        output.seek(0)
+        
+        # Generate output filename
+        filename = secure_filename(file.filename)
+        name, ext = os.path.splitext(filename)
+        output_filename = f"{name}.{output_format.lower()}"
+        
+        return output_filename, output.getvalue()
+    except Exception as e:
+        print(f"Error converting {file.filename}: {str(e)}")
+        return None, None
 
 @app.route('/')
 def index():
@@ -49,6 +90,9 @@ def convert():
     if not files or files[0].filename == '':
         return 'No files selected', 400
     
+    if len(files) > MAX_FILES:
+        return f'Too many files. Maximum allowed is {MAX_FILES}', 400
+    
     # Get conversion options
     output_format = request.form.get('format', 'WEBP')
     quality = int(request.form.get('quality', 70))
@@ -57,49 +101,24 @@ def convert():
     # Create a ZIP file in memory
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for file in files:
-            if not allowed_file(file.filename):
-                continue
+        # Convert files in parallel
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = []
+            for file in files:
+                if allowed_file(file.filename):
+                    futures.append(executor.submit(
+                        convert_single_image,
+                        file,
+                        output_format,
+                        quality,
+                        lossless
+                    ))
             
-            try:
-                # Open and convert image
-                img = Image.open(file.stream)
-                
-                # Preserve transparency if present
-                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
-                    if output_format == 'WEBP':
-                        # Convert to RGBA if needed
-                        if img.mode != 'RGBA':
-                            img = img.convert('RGBA')
-                        output = io.BytesIO()
-                        img.save(output, format='WEBP', quality=quality, lossless=lossless)
-                    elif output_format == 'PNG':
-                        output = io.BytesIO()
-                        img.save(output, format='PNG', optimize=True)
-                    else:  # JPEG doesn't support transparency
-                        img = img.convert('RGB')
-                        output = io.BytesIO()
-                        img.save(output, format=output_format, quality=quality)
-                else:
-                    # No transparency, convert to RGB if needed
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    output = io.BytesIO()
-                    img.save(output, format=output_format, quality=quality)
-                
-                output.seek(0)
-                
-                # Generate output filename
-                filename = secure_filename(file.filename)
-                name, ext = os.path.splitext(filename)
-                output_filename = f"{name}.{output_format.lower()}"
-                
-                # Add to ZIP
-                zip_file.writestr(output_filename, output.getvalue())
-            
-            except Exception as e:
-                print(f"Error converting {file.filename}: {str(e)}")
-                continue
+            # Collect results
+            for future in futures:
+                output_filename, output_data = future.result()
+                if output_filename and output_data:
+                    zip_file.writestr(output_filename, output_data)
     
     zip_buffer.seek(0)
     return send_file(
