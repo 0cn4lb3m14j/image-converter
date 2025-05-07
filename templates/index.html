@@ -541,7 +541,8 @@
                     
                     const response = await fetch('/convert', {
                         method: 'POST',
-                        body: fileFormData
+                        body: fileFormData,
+                        cache: 'no-store'
                     });
                     
                     if (!response.ok) {
