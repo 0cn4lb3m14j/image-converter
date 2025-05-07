@@ -2,7 +2,6 @@ from flask import Flask, request, render_template, send_file, jsonify
 from PIL import Image
 import io
 import os
-import zipfile
 from werkzeug.utils import secure_filename
 from concurrent.futures import ThreadPoolExecutor
 
@@ -43,16 +42,10 @@ def convert_single_image(file, output_format, quality, lossless):
             img.save(output, format=output_format, quality=quality)
         
         output.seek(0)
-        
-        # Generate output filename
-        filename = secure_filename(file.filename)
-        name, ext = os.path.splitext(filename)
-        output_filename = f"{name}.{output_format.lower()}"
-        
-        return output_filename, output.getvalue()
+        return output
     except Exception as e:
         print(f"Error converting {file.filename}: {str(e)}")
-        return None, None
+        return None
 
 @app.route('/')
 def index():
@@ -86,46 +79,33 @@ def convert():
     if 'files' not in request.files:
         return 'No files provided', 400
     
-    files = request.files.getlist('files')
-    if not files or files[0].filename == '':
-        return 'No files selected', 400
+    file = request.files['files']
+    if file.filename == '':
+        return 'No file selected', 400
     
-    if len(files) > MAX_FILES:
-        return f'Too many files. Maximum allowed is {MAX_FILES}', 400
+    if not allowed_file(file.filename):
+        return 'File type not allowed', 400
     
     # Get conversion options
     output_format = request.form.get('format', 'WEBP')
     quality = int(request.form.get('quality', 70))
     lossless = request.form.get('lossless') == 'on'
     
-    # Create a ZIP file in memory
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        # Convert files in parallel
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = []
-            for file in files:
-                if allowed_file(file.filename):
-                    futures.append(executor.submit(
-                        convert_single_image,
-                        file,
-                        output_format,
-                        quality,
-                        lossless
-                    ))
-            
-            # Collect results
-            for future in futures:
-                output_filename, output_data = future.result()
-                if output_filename and output_data:
-                    zip_file.writestr(output_filename, output_data)
+    # Convert the image
+    output = convert_single_image(file, output_format, quality, lossless)
+    if not output:
+        return 'Error converting image', 400
     
-    zip_buffer.seek(0)
+    # Generate output filename
+    filename = secure_filename(file.filename)
+    name, ext = os.path.splitext(filename)
+    output_filename = f"{name}.{output_format.lower()}"
+    
     return send_file(
-        zip_buffer,
-        mimetype='application/zip',
+        output,
+        mimetype=f'image/{output_format.lower()}',
         as_attachment=True,
-        download_name='converted_images.zip'
+        download_name=output_filename
     )
 
 if __name__ == '__main__':
