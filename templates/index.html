@@ -564,47 +564,9 @@
             } catch (error) {
                 console.error(error);
                 alert('Error converting images: ' + error.message);
+            } finally {
+                loading.style.display = 'none';
             }
-            
-            // Convert all files
-            const fileFormData = new FormData();
-            for (let i = 0; i < files.length; i++) {
-                fileFormData.append('files', files[i]);
-            }
-            fileFormData.append('format', format);
-            fileFormData.append('quality', quality);
-            if (lossless) {
-                fileFormData.append('lossless', lossless);
-            }
-            
-            try {
-                const response = await fetch('/convert', {
-                    method: 'POST',
-                    body: fileFormData
-                });
-                
-                if (!response.ok) {
-                    throw new Error('Error converting images');
-                }
-                
-                // Get the blob from the response
-                const blob = await response.blob();
-                
-                // Create a download link for each file
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'converted_images.zip';
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } catch (error) {
-                console.error(error);
-                alert('Error converting images: ' + error.message);
-            }
-            
-            loading.style.display = 'none';
         });
 
         // Make drop zone clickable
