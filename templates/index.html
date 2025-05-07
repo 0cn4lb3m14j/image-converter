@@ -182,6 +182,119 @@
             color: var(--text-light);
         }
 
+        .preview-section {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            background: var(--background);
+            display: none;
+        }
+
+        .preview-section.active {
+            display: block;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .preview-info {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-bottom: 16px;
+        }
+
+        .conversion-options {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            background: var(--background);
+            display: none;
+        }
+
+        .conversion-options.active {
+            display: block;
+        }
+
+        .option-group {
+            margin-bottom: 16px;
+        }
+
+        .option-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .option-select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+            font-family: inherit;
+        }
+
+        .option-range {
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .option-checkbox {
+            margin-right: 8px;
+        }
+
+        .preview-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .preview-item {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .preview-item:hover {
+            transform: translateY(-2px);
+        }
+
+        .preview-item-image {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .preview-item-info {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .preview-item-name {
+            font-weight: 500;
+            color: var(--text);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .drop-zone-subtitle {
+            font-size: 14px;
+            color: var(--text-light);
+            margin-top: 8px;
+        }
+
         @media (max-width: 640px) {
             .container {
                 padding: 20px;
@@ -203,13 +316,42 @@
         <div class="upload-form">
             <div class="drop-zone" id="dropZone">
                 <div class="drop-zone-icon">📁</div>
-                <p>Drag and drop your image here or click to select</p>
+                <p>Drag and drop your images here or click to select</p>
+                <p class="drop-zone-subtitle">You can select multiple files</p>
             </div>
             <form action="/convert" method="post" enctype="multipart/form-data" id="convertForm">
-                <input type="file" name="file" id="fileInput" class="file-input" accept="image/*" required>
-                <button type="submit" class="upload-btn">Convert to WebP</button>
+                <input type="file" name="files" id="fileInput" class="file-input" accept="image/*" multiple required>
+                
+                <div class="preview-section" id="previewSection">
+                    <div id="previewList" class="preview-list"></div>
+                </div>
+
+                <div class="conversion-options" id="conversionOptions">
+                    <div class="option-group">
+                        <label class="option-label">Output Format</label>
+                        <select name="format" class="option-select" id="formatSelect">
+                            <option value="WEBP" selected>WebP</option>
+                            <option value="PNG">PNG</option>
+                            <option value="JPEG">JPEG</option>
+                        </select>
+                    </div>
+
+                    <div class="option-group">
+                        <label class="option-label">Quality: <span id="qualityValue">70</span>%</label>
+                        <input type="range" name="quality" class="option-range" min="1" max="100" value="70" id="qualityRange">
+                    </div>
+
+                    <div class="option-group">
+                        <label class="option-label">
+                            <input type="checkbox" name="lossless" class="option-checkbox" id="losslessCheck">
+                            Lossless Compression (for WebP)
+                        </label>
+                    </div>
+                </div>
+
+                <button type="submit" class="upload-btn">Convert Images</button>
             </form>
-            <div class="file-name" id="fileName">No file selected</div>
+            <div class="file-name" id="fileName">No files selected</div>
             <div class="loading" id="loading"></div>
         </div>
 
@@ -238,6 +380,12 @@
         const fileName = document.getElementById('fileName');
         const convertForm = document.getElementById('convertForm');
         const loading = document.getElementById('loading');
+        const previewSection = document.getElementById('previewSection');
+        const previewList = document.getElementById('previewList');
+        const conversionOptions = document.getElementById('conversionOptions');
+        const formatSelect = document.getElementById('formatSelect');
+        const qualityRange = document.getElementById('qualityRange');
+        const losslessCheck = document.getElementById('losslessCheck');
 
         // Handle drag and drop
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -271,16 +419,85 @@
             const dt = e.dataTransfer;
             const files = dt.files;
             fileInput.files = files;
-            updateFileName();
+            handleFileSelect();
         }
 
         // Handle file selection
-        fileInput.addEventListener('change', updateFileName);
+        fileInput.addEventListener('change', handleFileSelect);
 
-        function updateFileName() {
-            const name = fileInput.files[0]?.name || 'No file selected';
-            fileName.textContent = name;
-            fileName.classList.toggle('has-file', fileInput.files.length > 0);
+        function handleFileSelect() {
+            const files = fileInput.files;
+            if (files.length > 0) {
+                fileName.textContent = `${files.length} file${files.length > 1 ? 's' : ''} selected`;
+                fileName.classList.add('has-file');
+                
+                // Clear previous previews
+                previewList.innerHTML = '';
+                
+                // Show preview section and options
+                previewSection.classList.add('active');
+                conversionOptions.classList.add('active');
+                
+                // Process each file
+                Array.from(files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        // Create preview item
+                        const previewItem = document.createElement('div');
+                        previewItem.className = 'preview-item';
+                        
+                        // Add image preview
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.className = 'preview-item-image';
+                        previewItem.appendChild(img);
+                        
+                        // Add file name
+                        const name = document.createElement('div');
+                        name.className = 'preview-item-name';
+                        name.textContent = file.name;
+                        previewItem.appendChild(name);
+                        
+                        // Add file info
+                        const info = document.createElement('div');
+                        info.className = 'preview-item-info';
+                        info.textContent = `Size: ${(file.size / 1024).toFixed(1)} KB`;
+                        previewItem.appendChild(info);
+                        
+                        previewList.appendChild(previewItem);
+                        
+                        // Get image info
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        
+                        fetch('/preview', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error) {
+                                console.error(data.error);
+                                return;
+                            }
+                            
+                            info.textContent = `Size: ${(file.size / 1024).toFixed(1)} KB | ${data.width}x${data.height} | ${data.format}`;
+                            
+                            // Update format options based on image type
+                            if (data.format === 'PNG' && data.mode.includes('A')) {
+                                losslessCheck.checked = true;
+                            }
+                        })
+                        .catch(error => console.error('Error:', error));
+                    };
+                    reader.readAsDataURL(file);
+                });
+            } else {
+                fileName.textContent = 'No files selected';
+                fileName.classList.remove('has-file');
+                previewSection.classList.remove('active');
+                conversionOptions.classList.remove('active');
+            }
         }
 
         // Handle form submission
