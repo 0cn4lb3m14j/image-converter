@@ -17,11 +17,17 @@ def convert_to_webp(image_data, quality=70):
     """Convert image to WebP format with 30% size reduction"""
     img = Image.open(io.BytesIO(image_data))
     
-    # Convert to RGB if image is in RGBA mode
+    # Preserve transparency if the image has an alpha channel
     if img.mode in ('RGBA', 'LA'):
-        background = Image.new('RGB', img.size, (255, 255, 255))
-        background.paste(img, mask=img.split()[-1])
-        img = background
+        # Keep the alpha channel
+        output = io.BytesIO()
+        img.save(output, format='WEBP', quality=quality, lossless=False)
+        output.seek(0)
+        return output
+    
+    # For non-transparent images, convert to RGB
+    if img.mode not in ('RGB', 'L'):
+        img = img.convert('RGB')
     
     output = io.BytesIO()
     img.save(output, format='WEBP', quality=quality)
