@@ -67,7 +67,7 @@ Note: Make sure your firewall allows incoming connections on port 5000
 - Built with Flask and Pillow
 - Uses WebP format for optimal compression
 - Handles transparent PNGs by converting to white background
-- Maximum file size: 16MB
+- Maximum file size: 32MB
 - CORS enabled for cross-origin requests
 - Deployed with Gunicorn for production use
 
