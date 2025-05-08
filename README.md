@@ -9,7 +9,7 @@ A free web-based tool that converts images to WebP format while reducing file si
 - Simple and intuitive web interface
 - Free to use
 - Accessible from any network
-- No file size limits (up to 16MB per file)
+- No file size limits (up to 32MB per file)
 
 ## Setup
 
